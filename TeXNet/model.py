@@ -30,7 +30,8 @@ class SMPModel(pl.LightningModule):
     """
     def __init__(self, args):
         super().__init__()
-        self.nclass = args.nclass
+        # self.nclass = args.nclass
+        self.nclass = 30
         self.eta = 0
         self.beta = 1
         self.args = args
@@ -99,9 +100,11 @@ class SMPModel(pl.LightningModule):
 
         self.e_map_criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
         self.T_map_criterion = nn.MSELoss()
-        self.v_map_criterion = nn.KLDivLoss()
+        # self.v_map_criterion = nn.KLDivLoss()
+        self.v_map_criterion = nn.KLDivLoss(reduction='batchmean')
         self.S_pred_criterion = nn.L1Loss()
-        self.miou = torchmetrics.JaccardIndex(num_classes=self.nclass)
+        # self.miou = torchmetrics.JaccardIndex(num_classes=self.nclass, task='multilabel', num_labels=30)
+        self.miou = torchmetrics.JaccardIndex(num_classes=30, ignore_index=-1, task='multiclass')
         self.softmax = nn.Softmax(dim=1)
 
         # if self.nclass == 28:
@@ -112,7 +115,7 @@ class SMPModel(pl.LightningModule):
         #     self.e_val_list =  self.e_val_list[f'emiLib{self.nclass}'].astype(np.float32)
 
         ########### Experimental data ################
-        self.e_val_list = scio.loadmat(os.path.join(args.data_dir, './emiLib.mat'))
+        self.e_val_list = scio.loadmat(os.path.join(args.data_dir, 'emiLib.mat'))
         self.e_val_list =  (self.e_val_list['matLib'].astype(np.float32)).transpose()
 
         self.e_val_list = torch.from_numpy(self.e_val_list)[:, -self.num_inp_ch:]
@@ -380,9 +383,10 @@ class SMPModel(pl.LightningModule):
             train_iou = self.miou(e_pred, e)
             self.log('train_miou', train_iou, on_step=True, on_epoch=False, sync_dist=True, prog_bar=False)
 
+        torch.cuda.empty_cache()
         return train_step_out
 
-    def training_epoch_end(self, outputs):
+    def on_train_epoch_end(self, outputs):
         T, e, v = tuple([_.detach() for _ in self.train_tgt])
         e = e.unsqueeze(1)
         # self.eta += (1./self.trainer.max_epochs)
@@ -506,6 +510,8 @@ class SMPModel(pl.LightningModule):
         with torch.no_grad():
             pred = self.texnet(img)
             e_pred = pred[:, :self.nclass, :, :]
+            # print(f"e_pred shape: {e_pred.shape}") # Debería ser [batch_size, 30, H, W]
+            # print(f"e shape: {e.shape}") # Debería ser [batch_size, H, W]
             T_pred = None
             v_pred = None
             if self.train_T:
@@ -532,6 +538,7 @@ class SMPModel(pl.LightningModule):
             # loss = loss_T + loss_e + loss_v
         
             e_pred = torch.argmax(e_pred, 1, keepdim=False).type(torch.long)
+            # print(f"After argmax, e_pred shape: {e_pred.shape}")  # Debería ser [batch_size, H, W]
             val_iou = self.miou(e_pred, e)
             loss_S, S_pred, corr_score = self.unsupervised_S_pred_loss(img, T_pred, e_pred, v_pred, S_beta,
                                                                         no_grad=True, calc_score=self.calc_score)
@@ -583,9 +590,10 @@ class SMPModel(pl.LightningModule):
         # print("Validation tensors")
 
         # print("Validation step end")
+        torch.cuda.empty_cache()
         return val_step_out
 
-    def validation_epoch_end(self, outputs):
+    def on_validation_epoch_end(self, outputs):
         # if outputs and self.only_eval:
         #     pred = [out['pred'] for out in outputs]
         #     tgt = [out['tgt'] for out in outputs]

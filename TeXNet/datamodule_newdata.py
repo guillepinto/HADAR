@@ -25,13 +25,18 @@ class HADARMultipleScenes():
         print("Fold is", fold, "for split", split)
 
         if fold is None:
-            train_ids = [f"L_{i:04d}" for i in range(2, 5)]
-            train_ids += [f"R_{i:04d}" for i in range(2, 5)]
-            val_ids = ["L_0001", "R_0001"] # one fresh sample and one sample from training set.
-            test_ids = ["L_0001", "R_0001"]
+            # train_ids = [f"L_{i:04d}" for i in range(2, 5)]
+            # train_ids += [f"R_{i:04d}" for i in range(2, 5)]
+            # train_ids = [f"L_{i:04d}" for i in range(2, 3)]
+            # train_ids += [f"R_{i:04d}" for i in range(2, 3)]
+            # val_ids = ["L_0001", "R_0001"] # one fresh sample and one sample from training set.
+            # test_ids = ["L_0001", "R_0001"]
+            val_exp_ids = ["L_0001"] # one fresh sample and one sample from training set.
+            test_exp_ids = ["L_0001"]
+            train_ids = ['L_0002']
             train_exp_ids = train_ids.copy()
-            val_exp_ids = ["L_0001", "R_0001"] # one fresh sample and one sample from training set.
-            test_exp_ids = ["L_0001", "R_0001"]
+            val_ids = ['L_0001']
+            test_ids = ['L_0001']
         elif fold == 0:
             train_ids = ["L_0002", "L_0003", "L_0004", "L_0005"]
             train_ids += ["R_0002", "R_0003", "R_0004", "R_0005"]
@@ -90,8 +95,8 @@ class HADARMultipleScenes():
 
         print('IDs for', split, 'are', ids, 'for synthetic data and', exp_ids, 'for experimental data')
 
-        SUBFOLDERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
-        SUBFOLDERS = ["Scene"+str(_) for _ in SUBFOLDERS]
+        # SUBFOLDERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]
+        SUBFOLDERS = ["Scene"+str(_) for _ in range(1, 3)]
 
         self.S_files = []
         self.S_beta_files = []
@@ -110,12 +115,16 @@ class HADARMultipleScenes():
                 ######### Synthetic ####################
                 self.S_files.append(os.path.join(root, subfolder, 'HeatCubes',
                                                  f"{id}_heatcube.mat"))
+                # self.S_beta_files.append(os.path.join(root, subfolder, 'HeatCubes',
+                #                                  'S_EnvObj_'+f"{id}.mat"))
                 self.S_beta_files.append(os.path.join(root, subfolder, 'HeatCubes',
-                                                 'S_EnvObj_'+f"{id}.npy"))
+                                                 'S_EnvObj_'+f"{id[2:]}.mat"))
                 self.T_files.append(os.path.join(root, subfolder, 'GroundTruth',
                                                  'tMap', f"tMap_{id}.mat"))
+                # self.e_files.append(os.path.join(root, subfolder, 'GroundTruth',
+                #                                  'eMap', f"new_eMap_{id}.npy"))
                 self.e_files.append(os.path.join(root, subfolder, 'GroundTruth',
-                                                 'eMap', f"new_eMap_{id}.npy"))
+                                                 'eMap', f"eMap_{id}.mat"))
                 self.v_files.append(os.path.join(root, subfolder, 'GroundTruth',
                                                  'vMap', f"vMap_{id}.mat"))
 
@@ -172,10 +181,26 @@ class HADARMultipleScenes():
         self.vMaps = []
 
         for i in self.S_beta_files:
-            data = np.load(i)
-            data = np.squeeze(data)
-            if data.shape[0] == 54:
+            # data = np.load(i)
+            # data = np.squeeze(data)
+            # if data.shape[0] == 54:
+            #     data = data[4:53]
+            # data = torch.from_numpy(data).type(torch.float)
+            # pass
+
+            data = scio.loadmat(i)["S_EnvObj"]
+            # if "S" in data.keys():
+            #     data = data["S"]
+            # elif "HSI" in data.keys():
+            #     data = data["HSI"]
+            # else:
+            #     raise ValueError("Known keys not present in heatcubes")
+            # data = scio.loadmat(i)["S"]
+            # print("Shape of S_beta_files = ", np.shape(data))
+            data = np.transpose(data, (1, 0))
+            if data.shape[0]==54:
                 data = data[4:53]
+            # data = (data-self.S_mu)/self.S_std
             data = torch.from_numpy(data).type(torch.float)
             self.S_beta.append(data)
 
@@ -189,6 +214,7 @@ class HADARMultipleScenes():
                 raise ValueError("Known keys not present in heatcubes")
             # data = scio.loadmat(i)["S"]
             data = np.transpose(data, (2, 0, 1))
+            # print("Shape of S_files = ", np.shape(data))
             if data.shape[0]==54:
                 data = data[4:53]
             data = (data-self.S_mu)/self.S_std
@@ -205,14 +231,15 @@ class HADARMultipleScenes():
             self.tMaps.append(data)
 
         for i in self.e_files:
-            # data = scio.loadmat(i)["eMap"]
-            # data = torch.from_numpy(data).type(torch.long)
+            data = scio.loadmat(i)["eMap"]
+            data = torch.from_numpy(data).type(torch.long)
             # self.eMaps.append(data)
             # # print("Shape of e = ", np.shape(data))
 
             ##### Synthetic data ####
-            data = np.load(i)
-            data = torch.from_numpy(data).type(torch.long)
+
+            # data = np.load(i)
+            # data = torch.from_numpy(data).type(torch.long)
             self.eMaps.append(data)
 
         for i in self.v_files:
@@ -349,7 +376,7 @@ class HADARMultipleScenesLoader(pl.LightningDataModule):
 
     def setup(self, stage=None):
 
-        train_inp_transform_list = [] #[transforms.RandomCrop(self.args.crop_size)]
+        train_inp_transform_list = [transforms.Resize((32, 32)),] #[transforms.RandomCrop(self.args.crop_size)]
         if self.randerase and False:
             train_inp_transform_list.extend([transforms.RandomErasing(p=0.5, scale=(0.1, 0.5))])
 

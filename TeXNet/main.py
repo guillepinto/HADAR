@@ -1,7 +1,7 @@
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
-from pytorch_lightning.plugins.training_type.ddp import DDPPlugin
+from pytorch_lightning.strategies import DDPStrategy as DDPPlugin
 
 import torch
 import numpy as np
@@ -73,8 +73,8 @@ if __name__ == "__main__":
                          accelerator="gpu",
                          plugins=plugins_list,
                          num_nodes=args.num_nodes,
-                         amp_backend='native',
-                         auto_lr_find=True,
+                        #  amp_backend='native',
+                        #  auto_lr_find=True,
                          benchmark=True, # only if the input sizes don't change rapidly
                          callbacks=callback_list,
                          default_root_dir=args.checkpoint_dir,
